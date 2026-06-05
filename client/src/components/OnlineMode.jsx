@@ -8,7 +8,7 @@ import { createEmptyBoard } from '../utils/gameLogic';
 import { useAuth } from '../contexts/AuthContext';
 import { playSound } from '../utils/SoundFX';
 
-const SOCKET_SERVER_URL = "http://localhost:3001";
+const SOCKET_SERVER_URL = "https://seabattle-game.onrender.com";
 
 export default function OnlineMode() {
   const navigate = useNavigate();
