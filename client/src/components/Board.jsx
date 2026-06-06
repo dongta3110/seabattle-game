@@ -15,7 +15,8 @@ export default function Board({
   onDragEndCell,
   onDragLeaveBoard,
   interactive,
-  shipsData = []
+  shipsData = [],
+  salvoTargets = []
 }) {
   const [hoverX, setHoverX] = useState(null);
   const [hoverY, setHoverY] = useState(null);
