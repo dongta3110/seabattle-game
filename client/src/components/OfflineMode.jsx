@@ -14,6 +14,10 @@ export default function OfflineMode() {
   const [turn, setTurn] = useState('player'); // 'player' or 'bot'
   const [winner, setWinner] = useState(null);
   const [botShotTrigger, setBotShotTrigger] = useState(0);
+  
+  // Game Mode
+  const [gameMode, setGameMode] = useState('classic'); // 'classic' or 'salvo'
+  const [salvoTargets, setSalvoTargets] = useState([]);
 
   // FX States
   const [shake, setShake] = useState(false);
@@ -41,19 +45,36 @@ export default function OfflineMode() {
   const startGame = () => {
     if (playerShips.length === 0) return;
     setPhase('playing');
+    setSalvoTargets([]);
+  };
+
+  const getLivingShipsCount = (ships) => {
+    return ships.filter(ship => !ship.positions.every(p => p.hit)).length;
   };
 
   const handlePlayerShoot = (x, y) => {
     if (phase !== 'playing' || turn !== 'player') return;
-    
-    setPlayerShots(prev => prev + 1);
-
-    // Check if already shot
     if (botBoard[y][x] === 'hit' || botBoard[y][x] === 'miss' || botBoard[y][x] === 'sunk') return;
 
+    if (gameMode === 'salvo') {
+      const maxShots = getLivingShipsCount(playerShips);
+      const existingIdx = salvoTargets.findIndex(t => t.x === x && t.y === y);
+      if (existingIdx >= 0) {
+        setSalvoTargets(prev => prev.filter((_, i) => i !== existingIdx));
+        playSound('shoot'); // Light sound for deselect
+      } else {
+        if (salvoTargets.length < maxShots) {
+          setSalvoTargets(prev => [...prev, {x, y}]);
+          playSound('shoot'); // Light sound for select
+        }
+      }
+      return;
+    }
+
+    // Classic Logic
+    setPlayerShots(prev => prev + 1);
     const newBotBoard = [...botBoard.map(row => [...row])];
     const newBotShips = [...botShips];
-
     let isHit = false;
 
     if (newBotBoard[y][x] !== null && newBotBoard[y][x] !== 'hit' && newBotBoard[y][x] !== 'miss') {
@@ -99,6 +120,66 @@ export default function OfflineMode() {
     }
   };
 
+  const firePlayerSalvo = () => {
+    if (salvoTargets.length === 0) return;
+    
+    setPlayerShots(prev => prev + salvoTargets.length);
+    playSound('salvo_fire', { count: salvoTargets.length });
+
+    const newBotBoard = [...botBoard.map(row => [...row])];
+    const newBotShips = [...botShips];
+    let hitCount = 0;
+    let anySunk = false;
+
+    for (let target of salvoTargets) {
+      const { x, y } = target;
+      if (newBotBoard[y][x] !== null && newBotBoard[y][x] !== 'hit' && newBotBoard[y][x] !== 'miss') {
+        hitCount++;
+        const shipId = newBotBoard[y][x];
+        const ship = newBotShips.find(s => s.id === shipId);
+        if (ship) {
+          const pos = ship.positions.find(p => p.x === x && p.y === y);
+          if (pos) pos.hit = true;
+          newBotBoard[y][x] = 'hit';
+          
+          if (ship.positions.every(p => p.hit)) {
+            ship.positions.forEach(p => newBotBoard[p.y][p.x] = 'sunk');
+            anySunk = true;
+            // setSinkingShip logic is tricky for multiple ships, let's just trigger shake and sound
+          }
+        }
+      } else {
+        newBotBoard[y][x] = 'miss';
+      }
+    }
+
+    setPlayerHits(prev => prev + hitCount);
+    setBotBoard(newBotBoard);
+    setBotShips(newBotShips);
+    setSalvoTargets([]);
+
+    if (anySunk) {
+      playSound('sunk');
+      triggerShake();
+    } else if (hitCount > 0) {
+      triggerShake();
+    }
+
+    if (checkWin(newBotShips)) {
+      setTimeout(() => {
+        playSound('win');
+        setWinner('Bạn');
+        setPhase('gameover');
+      }, 1000);
+      return;
+    }
+
+    // Salvo mode always changes turn
+    setTimeout(() => {
+      setTurn('bot');
+    }, 1000);
+  };
+
   const triggerShake = () => {
     setShake(true);
     setTimeout(() => setShake(false), 500);
@@ -109,19 +190,16 @@ export default function OfflineMode() {
     if (phase === 'playing' && turn === 'bot') {
       const timer = setTimeout(() => {
         botShoot();
-      }, 1000); // 1 second delay for bot
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [turn, phase, botShotTrigger]);
 
   const botShoot = () => {
-    playSound('shoot');
     const newPlayerBoard = [...playerBoard.map(row => [...row])];
     const newPlayerShips = [...playerShips];
 
-    let targetCoords = null;
-    
-    // Smart AI Logic
+    // Identify hit cells for smart hunting
     const hitCells = [];
     for (let r = 0; r < 10; r++) {
       for (let c = 0; c < 10; c++) {
@@ -129,14 +207,47 @@ export default function OfflineMode() {
       }
     }
 
+    const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    const getValidTargets = (targets) => targets.filter(t => {
+      if (t.x < 0 || t.x >= 10 || t.y < 0 || t.y >= 10) return false;
+      const state = newPlayerBoard[t.y][t.x];
+      return state !== 'hit' && state !== 'miss' && state !== 'sunk';
+    });
+
+    const maxShots = gameMode === 'salvo' ? getLivingShipsCount(botShips) : 1;
+    const selectedTargets = [];
+
+    // Helper to get remaining valid random cells
+    const getRandomCells = (count, exclude) => {
+       const available = [];
+       for (let r = 0; r < 10; r++) {
+         for (let c = 0; c < 10; c++) {
+           const state = newPlayerBoard[r][c];
+           if (state !== 'hit' && state !== 'miss' && state !== 'sunk') {
+              if (!exclude.some(t => t.x === c && t.y === r)) {
+                 available.push({x: c, y: r});
+              }
+           }
+         }
+       }
+       // Prioritize parity cells
+       const parity = available.filter(t => (t.x + t.y) % 2 === 0);
+       const pool = parity.length >= count ? parity : available;
+       
+       // Shuffle pool
+       for (let i = pool.length - 1; i > 0; i--) {
+         const j = Math.floor(Math.random() * (i + 1));
+         [pool[i], pool[j]] = [pool[j], pool[i]];
+       }
+       return pool.slice(0, count);
+    };
+
+    // Smart AI Logic
+    let potentialTargets = [];
     if (hitCells.length > 0) {
-      const potentialTargets = [];
-      const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-      
       let isHorizontalLine = false;
       let isVerticalLine = false;
 
-      // Check if any two hit cells are adjacent
       for (let i = 0; i < hitCells.length; i++) {
         for (let j = i + 1; j < hitCells.length; j++) {
            const dx = Math.abs(hitCells[i].x - hitCells[j].x);
@@ -160,89 +271,88 @@ export default function OfflineMode() {
         }
       }
 
-      const getValidTargets = (targets) => targets.filter(t => {
-        if (t.x < 0 || t.x >= 10 || t.y < 0 || t.y >= 10) return false;
-        const state = newPlayerBoard[t.y][t.x];
-        return state !== 'hit' && state !== 'miss' && state !== 'sunk';
-      });
-
-      let validTargets = getValidTargets(potentialTargets);
-
-      // Fallback if the line assumption yielded no valid targets (e.g. blocked by misses or edges, meaning ships are touching)
-      if (validTargets.length === 0 && (isHorizontalLine || isVerticalLine)) {
+      let validSmartTargets = getValidTargets(potentialTargets);
+      
+      // Fallback
+      if (validSmartTargets.length === 0 && (isHorizontalLine || isVerticalLine)) {
          const fallbackTargets = [];
          for (const cell of hitCells) {
            for (const [dx, dy] of directions) {
              fallbackTargets.push({x: cell.x + dx, y: cell.y + dy});
            }
          }
-         validTargets = getValidTargets(fallbackTargets);
+         validSmartTargets = getValidTargets(fallbackTargets);
       }
 
-      if (validTargets.length > 0) {
-        targetCoords = validTargets[Math.floor(Math.random() * validTargets.length)];
+      // Unique smart targets
+      const uniqueSmart = [];
+      validSmartTargets.forEach(t => {
+        if (!uniqueSmart.some(u => u.x === t.x && u.y === t.y)) {
+           uniqueSmart.push(t);
+        }
+      });
+
+      // Add to selected
+      for (const st of uniqueSmart) {
+        if (selectedTargets.length < maxShots) {
+          selectedTargets.push(st);
+        }
       }
     }
 
-    let x, y;
-    if (targetCoords) {
-      x = targetCoords.x;
-      y = targetCoords.y;
-    } else {
-      // Parity hunt algorithm
-      const availableCells = [];
-      for (let r = 0; r < 10; r++) {
-        for (let c = 0; c < 10; c++) {
-          if (newPlayerBoard[r][c] !== 'hit' && newPlayerBoard[r][c] !== 'miss' && newPlayerBoard[r][c] !== 'sunk') {
-            if ((r + c) % 2 === 0) availableCells.push({x: c, y: r});
-          }
-        }
-      }
-      
-      // Fallback if parity cells are exhausted
-      if (availableCells.length === 0) {
-        for (let r = 0; r < 10; r++) {
-          for (let c = 0; c < 10; c++) {
-            if (newPlayerBoard[r][c] !== 'hit' && newPlayerBoard[r][c] !== 'miss' && newPlayerBoard[r][c] !== 'sunk') {
-              availableCells.push({x: c, y: r});
-            }
-          }
-        }
-      }
-
-      const randomCell = availableCells[Math.floor(Math.random() * availableCells.length)];
-      x = randomCell.x;
-      y = randomCell.y;
+    // Fill the rest with random
+    if (selectedTargets.length < maxShots) {
+      const needed = maxShots - selectedTargets.length;
+      const randoms = getRandomCells(needed, selectedTargets);
+      selectedTargets.push(...randoms);
     }
 
-    let isHit = false;
-
-    if (newPlayerBoard[y][x] !== null && newPlayerBoard[y][x] !== 'hit' && newPlayerBoard[y][x] !== 'miss') {
-      isHit = true;
-      const shipId = newPlayerBoard[y][x];
-      const ship = newPlayerShips.find(s => s.id === shipId);
-      if (ship) {
-        const pos = ship.positions.find(p => p.x === x && p.y === y);
-        if (pos) pos.hit = true;
-        newPlayerBoard[y][x] = 'hit';
-        
-        if (ship.positions.every(p => p.hit)) {
-          ship.positions.forEach(p => newPlayerBoard[p.y][p.x] = 'sunk');
-          playSound('sunk');
-          setSinkingShip(ship);
-          setTimeout(() => setSinkingShip(null), 3000);
-        } else {
-          playSound('hit');
-          triggerShake();
-        }
-      }
+    if (gameMode === 'salvo') {
+      playSound('salvo_fire', { count: selectedTargets.length });
     } else {
-      newPlayerBoard[y][x] = 'miss';
-      playSound('miss');
+      playSound('shoot');
+    }
+
+    let hitCount = 0;
+    let anySunk = false;
+
+    for (const target of selectedTargets) {
+      const { x, y } = target;
+      if (newPlayerBoard[y][x] !== null && newPlayerBoard[y][x] !== 'hit' && newPlayerBoard[y][x] !== 'miss') {
+        hitCount++;
+        const shipId = newPlayerBoard[y][x];
+        const ship = newPlayerShips.find(s => s.id === shipId);
+        if (ship) {
+          const pos = ship.positions.find(p => p.x === x && p.y === y);
+          if (pos) pos.hit = true;
+          newPlayerBoard[y][x] = 'hit';
+          
+          if (ship.positions.every(p => p.hit)) {
+            ship.positions.forEach(p => newPlayerBoard[p.y][p.x] = 'sunk');
+            anySunk = true;
+            setSinkingShip(ship);
+            setTimeout(() => setSinkingShip(null), 3000);
+          }
+        }
+      } else {
+        newPlayerBoard[y][x] = 'miss';
+      }
     }
 
     setPlayerBoard(newPlayerBoard);
     setPlayerShips(newPlayerShips);
+
+    if (anySunk) {
+      playSound('sunk');
+      triggerShake();
+    } else if (hitCount > 0 && gameMode === 'salvo') {
+      triggerShake();
+    } else if (hitCount > 0 && gameMode === 'classic') {
+      playSound('hit');
+      triggerShake();
+    } else if (hitCount === 0 && gameMode === 'classic') {
+      playSound('miss');
+    }
 
     if (checkWin(newPlayerShips)) {
       setTimeout(() => {
@@ -253,12 +363,20 @@ export default function OfflineMode() {
       return;
     }
 
-    if (!isHit) {
-      setTurn('player');
+    if (gameMode === 'salvo') {
+      setTimeout(() => {
+        setTurn('player');
+      }, 1000);
     } else {
-      setBotShotTrigger(prev => prev + 1);
+      if (hitCount === 0) {
+        setTurn('player');
+      } else {
+        setBotShotTrigger(prev => prev + 1);
+      }
     }
   };
+
+  const maxPlayerShots = getLivingShipsCount(playerShips);
 
   return (
     <div style={{ position: 'relative' }} className={shake ? 'shake-active' : ''}>
@@ -275,32 +393,72 @@ export default function OfflineMode() {
       </h2>
       
       {phase === 'setup' && (
-        <ShipSetup 
-          playerBoard={playerBoard}
-          setPlayerBoard={setPlayerBoard}
-          playerShips={playerShips}
-          setPlayerShips={setPlayerShips}
-          onReady={startGame}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="panel" style={{ padding: '1rem', marginBottom: '2rem', display: 'flex', gap: '2rem', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>CHẾ ĐỘ CHƠI:</h3>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                className={`btn ${gameMode === 'classic' ? 'btn-primary' : ''}`}
+                onClick={() => setGameMode('classic')}
+              >
+                CƠ BẢN
+              </button>
+              <button 
+                className={`btn ${gameMode === 'salvo' ? 'btn-primary cyber-btn-red' : ''}`}
+                onClick={() => setGameMode('salvo')}
+                style={{ borderColor: gameMode === 'salvo' ? 'var(--color-alert-red)' : '' }}
+              >
+                SALVO (MƯA BOM)
+              </button>
+            </div>
+          </div>
+          <ShipSetup 
+            playerBoard={playerBoard}
+            setPlayerBoard={setPlayerBoard}
+            playerShips={playerShips}
+            setPlayerShips={setPlayerShips}
+            onReady={startGame}
+          />
+        </div>
       )}
 
       {phase === 'playing' && (
-        <div className="panel" style={{ textAlign: 'center', padding: '1rem 2rem' }}>
-          <h2 className="military-text" style={{ color: turn === 'player' ? 'var(--color-radar-green)' : 'var(--color-alert-red)' }}>
+        <div className="panel" style={{ textAlign: 'center', padding: '1rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <h2 className="military-text" style={{ color: turn === 'player' ? 'var(--color-radar-green)' : 'var(--color-alert-red)', margin: 0 }}>
             LƯỢT CỦA: {turn === 'player' ? 'BẠN' : 'MÁY TÍNH'}
           </h2>
+          
+          {gameMode === 'salvo' && turn === 'player' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+              <div style={{ fontSize: '1.2rem', color: 'var(--color-steel-light)' }}>
+                ĐẠN ĐANG NẠP: <b style={{ color: 'white' }}>{maxPlayerShots - salvoTargets.length} / {maxPlayerShots}</b>
+              </div>
+              <button 
+                className="btn btn-primary cyber-btn-red"
+                disabled={salvoTargets.length === 0}
+                onClick={firePlayerSalvo}
+                style={{
+                  opacity: salvoTargets.length === 0 ? 0.5 : 1,
+                  animation: salvoTargets.length > 0 ? 'pulse 1s infinite' : 'none'
+                }}
+              >
+                KHAI HỎA SALVO!
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {phase !== 'setup' && (
         <div className="board-container">
-          <div style={{ opacity: turn === 'bot' && phase === 'playing' ? 0.5 : 1, transition: 'opacity 0.3s' }} onClick={() => { if (turn === 'player' && phase === 'playing') playSound('shoot'); }}>
+          <div style={{ opacity: turn === 'bot' && phase === 'playing' ? 0.5 : 1, transition: 'opacity 0.3s' }}>
             <Board 
               title="LƯỚI RADAR (MÁY TÍNH)" 
               grid={botBoard} 
               hideShips={phase !== 'gameover'} 
               onCellClick={handlePlayerShoot} 
               shipsData={botShips}
+              salvoTargets={salvoTargets}
             />
           </div>
           <div style={{ opacity: turn === 'player' && phase === 'playing' ? 0.5 : 1, transition: 'opacity 0.3s' }}>

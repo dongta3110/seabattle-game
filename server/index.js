@@ -24,16 +24,17 @@ function generateRoomCode() {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on('createRoom', () => {
+  socket.on('createRoom', (gameMode = 'classic') => {
     const roomId = generateRoomCode();
     rooms[roomId] = {
       players: [{ id: socket.id, ready: false, ships: [] }],
       turn: null,
       gameState: 'waiting', // waiting, playing, finished
+      gameMode: gameMode
     };
     socket.join(roomId);
-    socket.emit('roomCreated', roomId);
-    console.log(`Room created: ${roomId}`);
+    socket.emit('roomCreated', { id: roomId, gameMode });
+    console.log(`Room created: ${roomId} with mode ${gameMode}`);
   });
 
   socket.on('joinRoom', (roomId) => {
@@ -42,7 +43,7 @@ io.on('connection', (socket) => {
       if (room.players.length < 2) {
         room.players.push({ id: socket.id, ready: false, ships: [] });
         socket.join(roomId);
-        socket.emit('roomJoined', roomId);
+        socket.emit('roomJoined', { id: roomId, gameMode: room.gameMode });
         
         if (room.players.length === 2) {
           io.to(roomId).emit('gameReady', 'Vui lòng đặt tàu để bắt đầu');
@@ -78,23 +79,21 @@ io.on('connection', (socket) => {
 
   socket.on('shoot', ({ roomId, x, y }) => {
     const room = rooms[roomId];
-    if (room && room.gameState === 'playing' && room.turn === socket.id) {
+    if (room && room.gameState === 'playing' && room.turn === socket.id && room.gameMode === 'classic') {
       const opponentIndex = room.players.findIndex(p => p.id !== socket.id);
-      if (opponentIndex === -1) return; // Prevent crash if opponent is missing
+      if (opponentIndex === -1) return; 
       const opponent = room.players[opponentIndex];
       
       let isHit = false;
       let shipSunk = null;
       let sunkPositions = null;
 
-      // Xử lý logic bắn ở server để tránh cheat
       for (let ship of opponent.ships) {
         for (let pos of ship.positions) {
           if (pos.x === x && pos.y === y) {
             isHit = true;
             pos.hit = true;
             
-            // Check if sunk
             const isSunk = ship.positions.every(p => p.hit);
             if (isSunk) {
               shipSunk = ship.id;
@@ -106,10 +105,8 @@ io.on('connection', (socket) => {
         if (isHit) break;
       }
 
-      // Check win condition
       const isWin = opponent.ships.every(ship => ship.positions.every(p => p.hit));
 
-      // Emit results
       io.to(roomId).emit('shotResult', {
         x, y,
         isHit,
@@ -123,26 +120,78 @@ io.on('connection', (socket) => {
         room.gameState = 'finished';
       } else {
         if (!isHit) {
-          // Change turn only if missed
           room.turn = opponent.id;
           io.to(roomId).emit('turnChange', { turn: room.turn });
         } else {
-          // Notify that the same player gets another turn (optional, just for consistency)
           io.to(roomId).emit('turnChange', { turn: room.turn });
         }
       }
     }
   });
 
+  socket.on('shoot_salvo', ({ roomId, targets }) => {
+    const room = rooms[roomId];
+    if (room && room.gameState === 'playing' && room.turn === socket.id && room.gameMode === 'salvo') {
+      const opponentIndex = room.players.findIndex(p => p.id !== socket.id);
+      if (opponentIndex === -1) return;
+      const opponent = room.players[opponentIndex];
+      
+      const results = [];
+      let isWin = false;
+
+      // Evaluate each target
+      for (let target of targets) {
+        const { x, y } = target;
+        let isHit = false;
+        let shipSunk = null;
+        let sunkPositions = null;
+
+        for (let ship of opponent.ships) {
+          for (let pos of ship.positions) {
+            if (pos.x === x && pos.y === y) {
+              isHit = true;
+              pos.hit = true;
+              
+              const isSunk = ship.positions.every(p => p.hit);
+              if (isSunk) {
+                shipSunk = ship.id;
+                sunkPositions = ship.positions.map(p => ({ x: p.x, y: p.y }));
+              }
+              break;
+            }
+          }
+          if (isHit) break;
+        }
+
+        results.push({ x, y, isHit, shipSunk, sunkPositions });
+      }
+
+      isWin = opponent.ships.every(ship => ship.positions.every(p => p.hit));
+
+      io.to(roomId).emit('salvoResult', {
+        results,
+        shooterId: socket.id,
+        isWin
+      });
+
+      if (isWin) {
+        room.gameState = 'finished';
+      } else {
+        // Salvo ALWAYS changes turn after firing
+        room.turn = opponent.id;
+        io.to(roomId).emit('turnChange', { turn: room.turn });
+      }
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Handle player disconnect: remove from room, notify opponent
     for (const [roomId, room] of Object.entries(rooms)) {
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== -1) {
         room.players.splice(playerIndex, 1);
         io.to(roomId).emit('playerDisconnected', 'Đối thủ đã thoát. Bạn đã thắng!');
-        delete rooms[roomId]; // Simple cleanup
+        delete rooms[roomId]; 
         break;
       }
     }

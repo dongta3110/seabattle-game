@@ -156,12 +156,15 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
                         setSelectedShipId(ship.id);
                       }
                     }}
-                    style={{ 
-                      borderColor: selectedShipId === ship.id ? 'var(--color-radar-green)' : 'var(--color-steel)',
-                      flexDirection: isVertical ? 'column' : 'row',
+                    style={{
                       position: 'relative',
-                      width: isVertical ? '40px' : `${ship.size * 40 + (ship.size - 1) * 2}px`,
-                      height: isVertical ? `${ship.size * 40 + (ship.size - 1) * 2}px` : '40px',
+                      width: isVertical ? 'var(--cell-size)' : `calc(var(--cell-size) * ${ship.size} + 2px * ${ship.size - 1})`,
+                      height: isVertical ? `calc(var(--cell-size) * ${ship.size} + 2px * ${ship.size - 1})` : 'var(--cell-size)',
+                      border: selectedShipId === ship.id ? '2px solid var(--color-radar-green)' : '2px solid var(--color-steel)',
+                      boxShadow: selectedShipId === ship.id ? '0 0 10px var(--color-radar-green)' : 'none',
+                      display: 'flex',
+                      flexDirection: isVertical ? 'column' : 'row',
+                      gap: '2px',
                     }}
                   >
                     <div style={{
@@ -171,8 +174,8 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
                     }}>
                       <ShipOverlay shipId={ship.id} size={ship.size} isVert={isVertical} />
                     </div>
-                    {Array(ship.size).fill(0).map((_, i) => (
-                      <div key={i} className="cell ship" style={{ width: '40px', height: '40px', opacity: 0 }}></div>
+                    {Array.from({ length: ship.size }).map((_, i) => (
+                      <div key={i} className="cell ship" style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', opacity: 0 }}></div>
                     ))}
                   </div>
                   <span style={{ fontSize: '0.9rem', color: 'white' }}>{ship.name}</span>

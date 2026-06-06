@@ -39,8 +39,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
           position: 'absolute',
           top: isVert ? '10%' : '50%',
           left: isVert ? '50%' : '10%',
-          width: isVert ? '4px' : '80%',
-          height: isVert ? '80%' : '4px',
+          width: isVert ? 'calc(var(--cell-size) * 0.1)' : '80%',
+          height: isVert ? '80%' : 'calc(var(--cell-size) * 0.1)',
           background: 'repeating-linear-gradient(' + (isVert ? '0deg' : '90deg') + ', #8b0000, #8b0000 10px, transparent 10px, transparent 20px)',
           transform: isVert ? 'translateX(-50%)' : 'translateY(-50%)',
           zIndex: 1
@@ -51,8 +51,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
       {!isCarrier && !isSub && (
         <>
           <div style={{
-            width: isVert ? '20px' : '15px',
-            height: isVert ? '15px' : '20px',
+            width: isVert ? 'calc(var(--cell-size) * 0.5)' : 'calc(var(--cell-size) * 0.375)',
+            height: isVert ? 'calc(var(--cell-size) * 0.375)' : 'calc(var(--cell-size) * 0.5)',
             background: superstructureColor,
             borderRadius: '50%',
             position: 'relative',
@@ -63,16 +63,16 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
               position: 'absolute',
               top: isVert ? '-10px' : '50%',
               left: isVert ? '50%' : '20px',
-              width: isVert ? '4px' : '10px',
-              height: isVert ? '10px' : '4px',
+              width: isVert ? 'calc(var(--cell-size) * 0.1)' : 'calc(var(--cell-size) * 0.25)',
+              height: isVert ? 'calc(var(--cell-size) * 0.25)' : 'calc(var(--cell-size) * 0.1)',
               background: '#444',
               transform: isVert ? 'translateX(-50%)' : 'translateY(-50%)'
             }}></div>
           </div>
 
           <div style={{
-            width: isVert ? '24px' : '40px',
-            height: isVert ? '40px' : '24px',
+            width: isVert ? 'calc(var(--cell-size) * 0.6)' : 'var(--cell-size)',
+            height: isVert ? 'var(--cell-size)' : 'calc(var(--cell-size) * 0.6)',
             background: superstructureColor,
             borderRadius: '4px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.8)',
@@ -81,8 +81,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
           }}></div>
 
           <div style={{
-            width: isVert ? '20px' : '15px',
-            height: isVert ? '15px' : '20px',
+            width: isVert ? 'calc(var(--cell-size) * 0.5)' : 'calc(var(--cell-size) * 0.375)',
+            height: isVert ? 'calc(var(--cell-size) * 0.375)' : 'calc(var(--cell-size) * 0.5)',
             background: superstructureColor,
             borderRadius: '50%',
             position: 'relative',
@@ -95,8 +95,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
               right: isVert ? 'auto' : '20px',
               top: isVert ? 'auto' : '50%',
               left: isVert ? '50%' : 'auto',
-              width: isVert ? '4px' : '10px',
-              height: isVert ? '10px' : '4px',
+              width: isVert ? 'calc(var(--cell-size) * 0.1)' : 'calc(var(--cell-size) * 0.25)',
+              height: isVert ? 'calc(var(--cell-size) * 0.25)' : 'calc(var(--cell-size) * 0.1)',
               background: '#444',
               transform: isVert ? 'translateX(-50%)' : 'translateY(-50%)'
             }}></div>
@@ -112,8 +112,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
           bottom: isVert ? 'auto' : '2px',
           top: isVert ? '30%' : 'auto',
           left: isVert ? 'auto' : '30%',
-          width: isVert ? '10px' : '40px',
-          height: isVert ? '40px' : '10px',
+          width: isVert ? 'calc(var(--cell-size) * 0.25)' : 'var(--cell-size)',
+          height: isVert ? 'var(--cell-size)' : 'calc(var(--cell-size) * 0.25)',
           background: superstructureColor,
           borderRadius: '2px',
           boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
@@ -124,8 +124,8 @@ export default function ShipOverlay({ shipId, size, isVert, widthPx, lengthPx })
       {/* Submarine details */}
       {isSub && (
         <div style={{
-          width: isVert ? '12px' : '30px',
-          height: isVert ? '30px' : '12px',
+          width: isVert ? 'calc(var(--cell-size) * 0.3)' : 'calc(var(--cell-size) * 0.75)',
+          height: isVert ? 'calc(var(--cell-size) * 0.75)' : 'calc(var(--cell-size) * 0.3)',
           background: '#1a252f',
           borderRadius: '6px',
           boxShadow: '0 2px 4px rgba(0,0,0,0.5)'

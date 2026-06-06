@@ -61,17 +61,12 @@ export default function Board({
       const isVert = ship.positions.length > 1 ? ship.positions[0].x === ship.positions[1].x : false;
       const size = ship.positions.length;
 
-      const cellW = 40;
-      const gap = 2;
-      const lengthPx = size * cellW + (size - 1) * gap;
-      const widthPx = cellW;
-
       const realStyle = {
         position: 'absolute',
-        top: `${startY * (cellW + gap) + gap}px`,
-        left: `${startX * (cellW + gap) + gap}px`,
-        width: isVert ? `${widthPx}px` : `${lengthPx}px`,
-        height: isVert ? `${lengthPx}px` : `${widthPx}px`,
+        top: `calc(var(--cell-size) * ${startY} + 2px * ${startY} + 2px)`,
+        left: `calc(var(--cell-size) * ${startX} + 2px * ${startX} + 2px)`,
+        width: isVert ? 'var(--cell-size)' : `calc(var(--cell-size) * ${size} + 2px * ${size - 1})`,
+        height: isVert ? `calc(var(--cell-size) * ${size} + 2px * ${size - 1})` : 'var(--cell-size)',
         pointerEvents: 'none',
         zIndex: 10,
         opacity: isSunk ? 0.5 : 1,
@@ -80,7 +75,7 @@ export default function Board({
 
       return (
         <div key={ship.id} style={realStyle}>
-          <ShipOverlay shipId={ship.id} size={size} isVert={isVert} widthPx={widthPx} lengthPx={lengthPx} />
+          <ShipOverlay shipId={ship.id} size={size} isVert={isVert} />
         </div>
       );
     });
@@ -108,6 +103,7 @@ export default function Board({
             classes += getPreviewClasses(x, y);
 
             const isShipCell = cellState !== null && cellState !== 'hit' && cellState !== 'miss' && cellState !== 'sunk' && !hideShips;
+            const isSalvoTarget = salvoTargets.some(t => t.x === x && t.y === y);
 
             return (
               <div
@@ -127,7 +123,25 @@ export default function Board({
                 }}
                 onClick={() => onCellClick(x, y)}
                 onMouseEnter={() => { if (interactive) { setHoverX(x); setHoverY(y); } }}
-              ></div>
+              >
+                {isSalvoTarget && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none'
+                  }}>
+                    <div style={{
+                      width: '60%', height: '60%',
+                      border: '2px solid var(--color-alert-red)',
+                      borderRadius: '50%',
+                      position: 'relative',
+                      boxShadow: '0 0 5px var(--color-alert-red)'
+                    }}>
+                      <div style={{ position: 'absolute', top: '50%', left: '-20%', right: '-20%', height: '2px', background: 'var(--color-alert-red)', transform: 'translateY(-50%)' }}></div>
+                      <div style={{ position: 'absolute', left: '50%', top: '-20%', bottom: '-20%', width: '2px', background: 'var(--color-alert-red)', transform: 'translateX(-50%)' }}></div>
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })
         )}

@@ -21,6 +21,11 @@ export default function OnlineMode() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   
+  // Game Mode
+  const [lobbyMode, setLobbyMode] = useState('classic');
+  const [gameMode, setGameMode] = useState('classic');
+  const [salvoTargets, setSalvoTargets] = useState([]);
+
   // Game state
   const [playerBoard, setPlayerBoard] = useState(createEmptyBoard());
   const [playerShips, setPlayerShips] = useState([]);
@@ -42,23 +47,28 @@ export default function OnlineMode() {
     setTimeout(() => setShake(false), 500);
   };
 
-  // Allow playing without login if they want, but usually require it
+  const getLivingShipsCount = (ships) => {
+    return ships.filter(ship => !ship.positions.every(p => p.hit)).length;
+  };
+
   const playerId = currentUser?.uid || `guest_${Math.floor(Math.random()*1000)}`;
 
   useEffect(() => {
     const newSocket = io(SOCKET_SERVER_URL);
     setSocket(newSocket);
 
-    newSocket.on('roomCreated', (id) => {
+    newSocket.on('roomCreated', ({ id, gameMode }) => {
       setRoomId(id);
+      setGameMode(gameMode);
       setStatus('setup');
-      setMessage(`Đã tạo phòng. Mã phòng: ${id}. Đợi đối thủ tham gia...`);
+      setMessage(`Đã tạo phòng [Chế độ ${gameMode === 'salvo' ? 'SALVO' : 'CƠ BẢN'}]. Mã phòng: ${id}. Đợi đối thủ tham gia...`);
     });
 
-    newSocket.on('roomJoined', (id) => {
+    newSocket.on('roomJoined', ({ id, gameMode }) => {
       setRoomId(id);
+      setGameMode(gameMode);
       setStatus('setup');
-      setMessage('Đã tham gia phòng!');
+      setMessage(`Đã tham gia phòng [Chế độ ${gameMode === 'salvo' ? 'SALVO' : 'CƠ BẢN'}]!`);
     });
 
     newSocket.on('roomError', (msg) => {
@@ -86,9 +96,9 @@ export default function OnlineMode() {
       setTurn(currentTurn);
     });
 
+    // Classic Shot Result
     newSocket.on('shotResult', ({ x, y, isHit, shooterId, shipSunk, sunkPositions, isWin }) => {
       if (shooterId === newSocket.id) {
-        // We shot
         setOpponentBoard(prev => {
           const newBoard = [...prev.map(row => [...row])];
           newBoard[y][x] = isHit ? 'hit' : 'miss';
@@ -132,6 +142,21 @@ export default function OnlineMode() {
           }
           return newBoard;
         });
+        
+        // Update our ships array
+        setPlayerShips(prevShips => {
+          const newShips = [...prevShips];
+          if (isHit) {
+            for (let ship of newShips) {
+              for (let pos of ship.positions) {
+                if (pos.x === x && pos.y === y) {
+                  pos.hit = true;
+                }
+              }
+            }
+          }
+          return newShips;
+        });
 
         if (shipSunk) {
           setMessage(`Một tàu của bạn đã bị chìm!`);
@@ -157,6 +182,108 @@ export default function OnlineMode() {
       }
     });
 
+    // Salvo Shot Result
+    newSocket.on('salvoResult', ({ results, shooterId, isWin }) => {
+      let hitCount = 0;
+      let anySunk = false;
+      let lastSunk = null;
+
+      if (shooterId === newSocket.id) {
+        playSound('salvo_fire', { count: results.length });
+        
+        setOpponentBoard(prev => {
+          const newBoard = [...prev.map(row => [...row])];
+          results.forEach(res => {
+            newBoard[res.y][res.x] = res.isHit ? 'hit' : 'miss';
+            if (res.isHit) hitCount++;
+            if (res.shipSunk && res.sunkPositions) {
+              anySunk = true;
+              lastSunk = { id: res.shipSunk, positions: res.sunkPositions };
+              res.sunkPositions.forEach(p => newBoard[p.y][p.x] = 'sunk');
+              setSunkOpponentShips(s => {
+                if (!s.some(x => x.id === res.shipSunk)) {
+                  return [...s, { id: res.shipSunk, positions: res.sunkPositions }];
+                }
+                return s;
+              });
+            }
+          });
+          return newBoard;
+        });
+
+        setPlayerHits(prev => prev + hitCount);
+
+        if (anySunk) {
+          setMessage(`Bạn đã bắn chìm tàu đối phương!`);
+          playSound('sunk');
+          setSinkingShip(lastSunk);
+          setTimeout(() => setSinkingShip(null), 3000);
+          triggerShake();
+        } else if (hitCount > 0) {
+          triggerShake();
+        }
+
+        if (isWin) {
+          setTimeout(() => {
+            playSound('win');
+            setWinner('Bạn');
+            setStatus('gameover');
+          }, 1000);
+        }
+      } else {
+        // Opponent shot us with Salvo
+        playSound('salvo_fire', { count: results.length });
+        
+        setPlayerBoard(prev => {
+          const newBoard = [...prev.map(row => [...row])];
+          results.forEach(res => {
+            newBoard[res.y][res.x] = res.isHit ? 'hit' : 'miss';
+            if (res.isHit) hitCount++;
+            if (res.shipSunk && res.sunkPositions) {
+              anySunk = true;
+              lastSunk = { id: res.shipSunk, positions: res.sunkPositions };
+              res.sunkPositions.forEach(p => newBoard[p.y][p.x] = 'sunk');
+            }
+          });
+          return newBoard;
+        });
+
+        setPlayerShips(prevShips => {
+          const newShips = [...prevShips];
+          results.forEach(res => {
+            if (res.isHit) {
+              for (let ship of newShips) {
+                for (let pos of ship.positions) {
+                  if (pos.x === res.x && pos.y === res.y) {
+                    pos.hit = true;
+                  }
+                }
+              }
+            }
+          });
+          return newShips;
+        });
+
+        if (anySunk) {
+          setMessage(`Tàu của bạn đã bị phá hủy!`);
+          playSound('sunk');
+          setSinkingShip(lastSunk);
+          setTimeout(() => setSinkingShip(null), 3000);
+          triggerShake();
+        } else if (hitCount > 0) {
+          triggerShake();
+        }
+
+        if (isWin) {
+          setTimeout(() => {
+            playSound('lose');
+            setWinner('Đối thủ');
+            setStatus('gameover');
+          }, 1000);
+        }
+      }
+    });
+
     newSocket.on('playerDisconnected', (msg) => {
       setStatus('gameover');
       setWinner('Bạn (Đối thủ thoát)');
@@ -168,7 +295,7 @@ export default function OnlineMode() {
 
   const createRoom = () => {
     setError('');
-    socket.emit('createRoom');
+    socket.emit('createRoom', lobbyMode);
   };
 
   const joinRoom = () => {
@@ -186,10 +313,34 @@ export default function OnlineMode() {
     if (status !== 'playing' || turn !== socket.id) return;
     if (opponentBoard[y][x] === 'hit' || opponentBoard[y][x] === 'miss' || opponentBoard[y][x] === 'sunk') return;
     
+    if (gameMode === 'salvo') {
+      const maxShots = getLivingShipsCount(playerShips);
+      const existingIdx = salvoTargets.findIndex(t => t.x === x && t.y === y);
+      if (existingIdx >= 0) {
+        setSalvoTargets(prev => prev.filter((_, i) => i !== existingIdx));
+        playSound('shoot');
+      } else {
+        if (salvoTargets.length < maxShots) {
+          setSalvoTargets(prev => [...prev, {x, y}]);
+          playSound('shoot');
+        }
+      }
+      return;
+    }
+
     setPlayerShots(prev => prev + 1);
     playSound('shoot');
     socket.emit('shoot', { roomId, x, y });
   };
+
+  const firePlayerSalvo = () => {
+    if (salvoTargets.length === 0) return;
+    setPlayerShots(prev => prev + salvoTargets.length);
+    socket.emit('shoot_salvo', { roomId, targets: salvoTargets });
+    setSalvoTargets([]);
+  };
+
+  const maxPlayerShots = getLivingShipsCount(playerShips);
 
   return (
     <div style={{ position: 'relative' }} className={shake ? 'shake-active' : ''}>
@@ -209,13 +360,35 @@ export default function OnlineMode() {
       </h2>
       
       {status === 'lobby' && (
-        <div className="panel" style={{ textAlign: 'center', width: '400px', margin: '0 auto' }}>
-          <h3 style={{ marginBottom: '1.5rem' }}>Xin chào, {currentUser ? currentUser.displayName : 'Khách'}</h3>
-          {error && <p style={{ color: 'var(--color-alert-red)', marginBottom: '1rem' }}>{error}</p>}
-          <button className="btn btn-primary" onClick={createRoom} style={{ width: '100%', marginBottom: '1rem' }}>
-            TẠO PHÒNG MỚI
-          </button>
-          <div style={{ margin: '1rem 0' }}>HOẶC</div>
+        <div className="panel" style={{ textAlign: 'center', width: '400px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <h3 style={{ margin: 0 }}>Xin chào, {currentUser ? currentUser.displayName : 'Khách'}</h3>
+          {error && <p style={{ color: 'var(--color-alert-red)', margin: 0 }}>{error}</p>}
+          
+          <div style={{ border: '1px solid var(--color-steel)', padding: '1rem', background: 'rgba(0,0,0,0.3)' }}>
+            <h4 style={{ marginBottom: '1rem', color: 'var(--color-radar-green)' }}>TẠO PHÒNG MỚI</h4>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '1rem' }}>
+              <button 
+                className={`btn ${lobbyMode === 'classic' ? 'btn-primary' : ''}`}
+                onClick={() => setLobbyMode('classic')}
+                style={{ flex: 1 }}
+              >
+                CƠ BẢN
+              </button>
+              <button 
+                className={`btn ${lobbyMode === 'salvo' ? 'btn-primary cyber-btn-red' : ''}`}
+                onClick={() => setLobbyMode('salvo')}
+                style={{ flex: 1, borderColor: lobbyMode === 'salvo' ? 'var(--color-alert-red)' : '' }}
+              >
+                SALVO
+              </button>
+            </div>
+            <button className="btn btn-primary" onClick={createRoom} style={{ width: '100%' }}>
+              TẠO PHÒNG
+            </button>
+          </div>
+
+          <div>HOẶC</div>
+
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <input 
               type="text" 
@@ -226,13 +399,14 @@ export default function OnlineMode() {
             />
             <button className="btn" onClick={joinRoom}>VÀO</button>
           </div>
-          <button className="btn" onClick={() => navigate('/')} style={{ marginTop: '2rem' }}>QUAY LẠI</button>
+          
+          <button className="btn" onClick={() => navigate('/')} style={{ marginTop: '1rem' }}>QUAY LẠI</button>
         </div>
       )}
 
       {(status === 'setup' || status === 'waiting') && (
         <div className="panel" style={{ textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--color-radar-green)', marginBottom: '1rem' }}>Mã phòng: {roomId}</h3>
+          <h3 style={{ color: 'var(--color-radar-green)', marginBottom: '1rem' }}>Mã phòng: {roomId} ({gameMode === 'salvo' ? 'Chế độ Salvo' : 'Chế độ Cơ bản'})</h3>
           <p style={{ marginBottom: '1rem' }}>{message}</p>
           
           {status === 'setup' ? (
@@ -253,11 +427,30 @@ export default function OnlineMode() {
 
       {status === 'playing' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-          <div className="panel" style={{ textAlign: 'center', padding: '1rem 2rem', marginBottom: '2rem' }}>
-            <h2 className="military-text" style={{ color: turn === socket.id ? 'var(--color-radar-green)' : 'var(--color-alert-red)' }}>
+          <div className="panel" style={{ textAlign: 'center', padding: '1rem 2rem', marginBottom: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <h2 className="military-text" style={{ color: turn === socket.id ? 'var(--color-radar-green)' : 'var(--color-alert-red)', margin: 0 }}>
               {turn === socket.id ? 'LƯỢT CỦA BẠN: KHAI HOẢ!' : 'ĐỐI THỦ ĐANG NGẮM BẮN...'}
             </h2>
-            <p style={{ marginTop: '0.5rem' }}>{message}</p>
+            <p style={{ margin: 0 }}>{message}</p>
+
+            {gameMode === 'salvo' && turn === socket.id && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginTop: '0.5rem' }}>
+                <div style={{ fontSize: '1.2rem', color: 'var(--color-steel-light)' }}>
+                  ĐẠN ĐANG NẠP: <b style={{ color: 'white' }}>{maxPlayerShots - salvoTargets.length} / {maxPlayerShots}</b>
+                </div>
+                <button 
+                  className="btn btn-primary cyber-btn-red"
+                  disabled={salvoTargets.length === 0}
+                  onClick={firePlayerSalvo}
+                  style={{
+                    opacity: salvoTargets.length === 0 ? 0.5 : 1,
+                    animation: salvoTargets.length > 0 ? 'pulse 1s infinite' : 'none'
+                  }}
+                >
+                  KHAI HỎA SALVO!
+                </button>
+              </div>
+            )}
           </div>
           
           <div className="board-container">
@@ -268,6 +461,7 @@ export default function OnlineMode() {
                 hideShips={status !== 'gameover'} 
                 onCellClick={handleShoot}
                 shipsData={sunkOpponentShips} 
+                salvoTargets={salvoTargets}
               />
             </div>
             <div style={{ opacity: turn === socket.id ? 0.5 : 1, transition: 'opacity 0.3s' }}>
@@ -321,6 +515,7 @@ export default function OnlineMode() {
                 setWinner(null);
                 setPlayerShots(0);
                 setPlayerHits(0);
+                setSalvoTargets([]);
               }}>Chơi lại</button>
               <button className="btn" onClick={() => {
                 if (socket) socket.disconnect();

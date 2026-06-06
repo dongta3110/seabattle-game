@@ -1,6 +1,6 @@
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-export const playSound = (type) => {
+export const playSound = (type, data = null) => {
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -24,6 +24,9 @@ export const playSound = (type) => {
         break;
       case 'lose':
         playLoseSound();
+        break;
+      case 'salvo_fire':
+        playSalvoFire(data?.count || 3);
         break;
     }
   } catch (e) {
@@ -129,4 +132,12 @@ const playLoseSound = () => {
   gain.connect(audioCtx.destination);
   osc.start();
   osc.stop(audioCtx.currentTime + 2);
+};
+
+const playSalvoFire = (count) => {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      playShootSound();
+    }, i * 150); // Fire a shot every 150ms
+  }
 };
