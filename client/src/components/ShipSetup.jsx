@@ -3,17 +3,17 @@ import Board from './Board';
 import ShipOverlay from './ShipOverlay';
 import { SHIPS, createEmptyBoard, canPlaceShip, placeShip, generateRandomBoard } from '../utils/gameLogic';
 
-export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, setPlayerShips, onReady }) {
+export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, setPlayerShips, onReady, shipDefinitions = SHIPS }) {
   const [selectedShipId, setSelectedShipId] = useState(null);
   const [isVertical, setIsVertical] = useState(false);
   const [draggingShipId, setDraggingShipId] = useState(null);
 
   // Lọc ra các tàu chưa được đặt
-  const availableShips = SHIPS.filter(s => !playerShips.find(ps => ps.id === s.id));
+  const availableShips = shipDefinitions.filter(s => !playerShips.find(ps => ps.id === s.id));
   
   // The ship currently selected or being dragged
   const activeShipId = draggingShipId || selectedShipId;
-  const activeShip = SHIPS.find(s => s.id === activeShipId);
+  const activeShip = shipDefinitions.find(s => s.id === activeShipId);
 
   const handleCellClick = (x, y) => {
     const cellState = playerBoard[y][x];
@@ -30,7 +30,7 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
   };
 
   const attemptPlaceShip = (shipId, x, y, vertical) => {
-    const ship = SHIPS.find(s => s.id === shipId);
+    const ship = shipDefinitions.find(s => s.id === shipId);
     if (!ship) return false;
 
     // Nếu tàu này đã có trên bàn cờ, ta nhấc nó lên trước
@@ -96,7 +96,7 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
   };
 
   const randomize = () => {
-    const { board, placedShips } = generateRandomBoard();
+    const { board, placedShips } = generateRandomBoard(shipDefinitions);
     setPlayerBoard(board);
     setPlayerShips(placedShips);
     setSelectedShipId(null);
@@ -134,6 +134,21 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
     setDraggingShipId(null);
   };
 
+  const groupedShips = [];
+  const counts = {};
+  availableShips.forEach(s => {
+    if (!counts[s.name]) counts[s.name] = [];
+    counts[s.name].push(s);
+  });
+  
+  Object.keys(counts).forEach(name => {
+    const ships = counts[name];
+    groupedShips.push({
+      ...ships[0],
+      displayName: ships.length > 1 ? `${name} x${ships.length}` : name
+    });
+  });
+
   return (
     <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center', userSelect: 'none' }}>
       <div className="panel" style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -142,7 +157,7 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
         {availableShips.length > 0 ? (
           <>
             <div style={{ display: 'flex', flexDirection: isVertical ? 'row' : 'column', gap: '1rem', flexWrap: 'wrap' }}>
-              {availableShips.map(ship => (
+              {groupedShips.map(ship => (
                 <div key={ship.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div 
                     className={`draggable-ship ${selectedShipId === ship.id ? 'selected' : ''}`}
@@ -178,7 +193,7 @@ export default function ShipSetup({ playerBoard, setPlayerBoard, playerShips, se
                       <div key={i} className="cell ship" style={{ width: 'var(--cell-size)', height: 'var(--cell-size)', opacity: 0 }}></div>
                     ))}
                   </div>
-                  <span style={{ fontSize: '0.9rem', color: 'white' }}>{ship.name}</span>
+                  <span style={{ fontSize: '0.9rem', color: 'white' }}>{ship.displayName}</span>
                 </div>
               ))}
             </div>

@@ -8,6 +8,12 @@ export const SHIPS = [
   { id: 'destroyer', name: 'Tàu Khu Trục', size: 2 },
 ];
 
+export const MINES = [
+  { id: 'mine1', name: 'Thủy Lôi', size: 1 },
+  { id: 'mine2', name: 'Thủy Lôi', size: 1 },
+  { id: 'mine3', name: 'Thủy Lôi', size: 1 },
+];
+
 export const createEmptyBoard = () => {
   return Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null));
 };
@@ -46,11 +52,11 @@ export const placeShip = (board, x, y, size, isVertical, shipId) => {
 };
 
 // Generate a random board for bot
-export const generateRandomBoard = () => {
+export const generateRandomBoard = (shipsToPlace = SHIPS) => {
   const board = createEmptyBoard();
   const placedShips = [];
 
-  for (const ship of SHIPS) {
+  for (const ship of shipsToPlace) {
     let placed = false;
     while (!placed) {
       const isVertical = Math.random() > 0.5;
@@ -69,5 +75,6 @@ export const generateRandomBoard = () => {
 };
 
 export const checkWin = (ships) => {
-  return ships.every(ship => ship.positions.every(p => p.hit));
+  const battleShips = ships.filter(ship => !ship.id.startsWith('mine'));
+  return battleShips.every(ship => ship.positions.every(p => p.hit));
 };

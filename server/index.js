@@ -27,7 +27,7 @@ io.on('connection', (socket) => {
   socket.on('createRoom', (gameMode = 'classic') => {
     const roomId = generateRoomCode();
     rooms[roomId] = {
-      players: [{ id: socket.id, ready: false, ships: [] }],
+      players: [{ id: socket.id, ready: false, ships: [], receivedShots: [], skipTurn: false }],
       turn: null,
       gameState: 'waiting', // waiting, playing, finished
       gameMode: gameMode
@@ -41,7 +41,7 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (room) {
       if (room.players.length < 2) {
-        room.players.push({ id: socket.id, ready: false, ships: [] });
+        room.players.push({ id: socket.id, ready: false, ships: [], receivedShots: [], skipTurn: false });
         socket.join(roomId);
         socket.emit('roomJoined', { id: roomId, gameMode: room.gameMode });
         
@@ -79,18 +79,32 @@ io.on('connection', (socket) => {
 
   socket.on('shoot', ({ roomId, x, y }) => {
     const room = rooms[roomId];
-    if (room && room.gameState === 'playing' && room.turn === socket.id && room.gameMode === 'classic') {
+    if (room && room.gameState === 'playing' && room.turn === socket.id && (room.gameMode === 'classic' || room.gameMode === 'mines')) {
       const opponentIndex = room.players.findIndex(p => p.id !== socket.id);
       if (opponentIndex === -1) return; 
       const opponent = room.players[opponentIndex];
+      const shooterIndex = room.players.findIndex(p => p.id === socket.id);
+      const shooter = room.players[shooterIndex];
       
       let isHit = false;
       let shipSunk = null;
       let sunkPositions = null;
+      let isMineHit = false;
+      let turnSkipped = false;
+      let reflectedShipSunk = null;
+      let reflectedSunkPositions = null;
+
+      if (!opponent.receivedShots.some(s => s.x === x && s.y === y)) {
+        opponent.receivedShots.push({ x, y });
+      }
 
       for (let ship of opponent.ships) {
         for (let pos of ship.positions) {
           if (pos.x === x && pos.y === y) {
+            if (ship.id.startsWith('mine')) {
+              isMineHit = true;
+              break;
+            }
             isHit = true;
             pos.hit = true;
             
@@ -102,29 +116,64 @@ io.on('connection', (socket) => {
             break;
           }
         }
-        if (isHit) break;
+        if (isHit || isMineHit) break;
       }
 
-      const isWin = opponent.ships.every(ship => ship.positions.every(p => p.hit));
+      if (isMineHit) {
+        const alreadyShot = shooter.receivedShots.some(s => s.x === x && s.y === y);
+        if (alreadyShot) {
+          shooter.skipTurn = true;
+          turnSkipped = true;
+        } else {
+          shooter.receivedShots.push({ x, y });
+          for (let ship of shooter.ships) {
+            if (ship.id.startsWith('mine')) continue;
+            for (let pos of ship.positions) {
+              if (pos.x === x && pos.y === y) {
+                pos.hit = true;
+                const isSunk = ship.positions.every(p => p.hit);
+                if (isSunk) {
+                  reflectedShipSunk = ship.id;
+                  reflectedSunkPositions = ship.positions.map(p => ({ x: p.x, y: p.y }));
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      const battleShipsOpponent = opponent.ships.filter(s => !s.id.startsWith('mine'));
+      const isWin = battleShipsOpponent.length > 0 && battleShipsOpponent.every(ship => ship.positions.every(p => p.hit));
+      
+      const battleShipsShooter = shooter.ships.filter(s => !s.id.startsWith('mine'));
+      const isLose = battleShipsShooter.length > 0 && battleShipsShooter.every(ship => ship.positions.every(p => p.hit));
 
       io.to(roomId).emit('shotResult', {
         x, y,
         isHit,
+        isMineHit,
+        turnSkipped,
+        reflectedShipSunk,
+        reflectedSunkPositions,
         shooterId: socket.id,
         shipSunk,
         sunkPositions,
-        isWin
+        isWin,
+        isLose
       });
 
-      if (isWin) {
+      if (isWin || isLose) {
         room.gameState = 'finished';
       } else {
-        if (!isHit) {
-          room.turn = opponent.id;
-          io.to(roomId).emit('turnChange', { turn: room.turn });
-        } else {
-          io.to(roomId).emit('turnChange', { turn: room.turn });
+        if (isMineHit || !isHit) {
+           if (opponent.skipTurn) {
+             opponent.skipTurn = false;
+           } else {
+             room.turn = opponent.id;
+           }
         }
+        io.to(roomId).emit('turnChange', { turn: room.turn });
       }
     }
   });
