@@ -412,7 +412,7 @@ export default function OnlineMode() {
     setSalvoTargets([]);
   };
 
-  const maxPlayerShots = getLivingShipsCount(playerShips);
+  const maxPlayerShots = SHIPS.length - sunkOpponentShips.length;
 
   return (
     <div style={{ position: 'relative', paddingTop: '4rem' }} className={shake ? 'shake-active' : ''}>
@@ -510,8 +510,8 @@ export default function OnlineMode() {
                 ) : gameMode === 'salvo' ? (
                   <ul style={{ textAlign: 'left', lineHeight: '1.8', paddingLeft: '1.2rem', color: 'var(--color-steel-light)', margin: 0 }}>
                     <li>Trong chế độ Mưa Bom, bạn có thể khai hỏa <b>nhiều phát đạn cùng lúc</b>.</li>
-                    <li>Số lượng đạn mỗi lượt tương đương với <b>số tàu còn sống</b> của bạn.</li>
-                    <li>Hãy cẩn thận: Nếu bạn bị mất 1 tàu, bạn sẽ bị <b>giảm 1 viên đạn</b> ở lượt tiếp theo!</li>
+                    <li>Số lượng đạn mỗi lượt tương đương với <b>số tàu còn sống của đối phương</b>. Tức là bắn nổ càng nhiều tàu địch, bạn càng có ít đạn.</li>
+                    <li>Khi bạn chỉ còn <b>1 viên đạn</b> (đối phương chỉ còn 1 tàu), nếu bắn trúng, bạn sẽ được thưởng <b>bắn thêm 1 lượt nữa</b>!</li>
                     <li>Click vào lưới radar địch để <b>ghim mục tiêu</b> (xuất hiện tâm ngắm đỏ). Click lại để hủy ghim.</li>
                     <li>Sau khi nạp đủ đạn, nhấn <b>KHAI HỎA SALVO</b> để dội bom đồng loạt. Bắn xong sẽ tự động chuyển lượt.</li>
                   </ul>
@@ -550,7 +550,7 @@ export default function OnlineMode() {
                   <ul style={{ textAlign: 'left', lineHeight: '1.8', paddingLeft: '1.2rem', color: 'var(--color-steel-light)', margin: 0 }}>
                     <li>Hãy ưu tiên rải đạn bao trùm một khu vực rộng để tìm dấu vết của tàu địch.</li>
                     <li>Khi phát hiện có vết trúng đạn, ở lượt tiếp theo hãy <b>dồn toàn bộ hỏa lực</b> xung quanh ô đó để kết liễu con tàu nhanh nhất có thể.</li>
-                    <li>Việc tiêu diệt hoàn toàn 1 con tàu địch cực kỳ quan trọng vì nó sẽ làm giảm lượng đạn của chúng ở lượt sau!</li>
+                    <li>Đừng vội nản chí nếu bạn mất tàu sớm. Hãy cố gắng tiêu diệt tàu địch để cắt giảm lượng đạn của chúng ở lượt sau!</li>
                   </ul>
                 ) : (
                   <ul style={{ textAlign: 'left', lineHeight: '1.8', paddingLeft: '1.2rem', color: 'var(--color-steel-light)', margin: 0 }}>

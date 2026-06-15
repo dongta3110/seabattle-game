@@ -226,8 +226,12 @@ io.on('connection', (socket) => {
       if (isWin) {
         room.gameState = 'finished';
       } else {
-        // Salvo ALWAYS changes turn after firing
-        room.turn = opponent.id;
+        const hitCount = results.filter(r => r.isHit).length;
+        if (targets.length === 1 && hitCount > 0) {
+           // Giữ nguyên lượt
+        } else {
+           room.turn = opponent.id;
+        }
         io.to(roomId).emit('turnChange', { turn: room.turn });
       }
     }
